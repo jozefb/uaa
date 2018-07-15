@@ -1,3 +1,6 @@
+import com.bmuschko.gradle.cargo.convention.Deployable
+import com.bmuschko.gradle.cargo.convention.ZipUrlInstaller
+import com.bmuschko.gradle.cargo.tasks.local.CargoStartLocal
 import org.apache.commons.lang.time.StopWatch
 import org.apache.tools.ant.filters.ReplaceTokens
 
@@ -19,7 +22,7 @@ buildscript {
     }
 
     dependencies {
-        classpath group: 'com.bmuschko', name: 'gradle-cargo-plugin', version: '2.2.3'
+        classpath group: 'com.bmuschko', name: 'gradle-cargo-plugin', version: '2.3'
         classpath group: 'org.jfrog.buildinfo', name: 'build-info-extractor-gradle', version: '2.2.4'
         classpath group: 'org.kt3k.gradle.plugin', name: 'coveralls-gradle-plugin', version: '2.4.0'
         classpath group: 'org.mariadb.jdbc', name: 'mariadb-java-client', version: '1.1.8'
@@ -71,7 +74,7 @@ allprojects {
         maven {
             url 'https://build.shibboleth.net/nexus/content/repositories/releases/'
         }
-        maven { url 'http://repository.mulesoft.org/releases/'}
+        maven { url 'http://repository.mulesoft.org/releases/' }
     }
     task sourceJar(type: Jar) {
         from sourceSets.main.allJava
@@ -154,8 +157,8 @@ task manifests(dependsOn: assemble, type: Copy) {
         include '**/*.yml'
         filter(ReplaceTokens,
                 tokens: [
-                        version: uaaVersion,
-                        app: System.getProperty('app', 'myuaa'),
+                        version  : uaaVersion,
+                        app      : System.getProperty('app', 'myuaa'),
                         appdomain: System.getProperty('app-domain', 'bosh-lite.com'),
                 ]
         )
@@ -285,67 +288,117 @@ publishing {
 }
 
 def integrationTestCoverageExecutionData = "${buildDir}/integrationTestCoverageReport.exec"
+def oidcIntegrationTestCoverageExecutionData = "${buildDir}/oidcintegrationTestCoverageReport.exec"
+
 
 cargo {
-    containerId = tomcatContainerId
+    containerId = 'tomcat8x'
+}
+
+def tomcatZipUrlInstaller = new ZipUrlInstaller()
+tomcatZipUrlInstaller.installUrl = 'https://repo1.maven.org/maven2/org/apache/tomcat/tomcat/' + tomcatVersion + '/tomcat-' + tomcatVersion + '.tar.gz'
+tomcatZipUrlInstaller.downloadDir = file("$buildDir/download")
+tomcatZipUrlInstaller.extractDir = file("$buildDir/extract")
+
+def oidcTomcatZipUrlInstaller = new ZipUrlInstaller()
+oidcTomcatZipUrlInstaller.installUrl = 'https://repo1.maven.org/maven2/org/apache/tomcat/tomcat/' + tomcatVersion + '/tomcat-' + tomcatVersion + '.tar.gz'
+oidcTomcatZipUrlInstaller.downloadDir = file("$buildDir/oidc_download")
+oidcTomcatZipUrlInstaller.extractDir = file("$buildDir/oidc_extract")
+
+
+def tomcatConfig = new com.bmuschko.gradle.cargo.convention.ConfigFile()
+tomcatConfig.file = file('scripts/travis/tomcat-conf/context.xml')
+tomcatConfig.toDir = 'conf'
+
+def statsdDeployable = new Deployable()
+statsdDeployable.context = 'statsd'
+statsdDeployable.file = file('statsd/build/libs/cloudfoundry-identity-statsd-' + version + '.war')
+def apiDeployable = new Deployable()
+apiDeployable.file = file('samples/api/build/libs/cloudfoundry-identity-api-' + version + '.war')
+apiDeployable.context = 'api'
+def appDeployable = new Deployable()
+appDeployable.file = file('samples/app/build/libs/cloudfoundry-identity-app-' + version + '.war')
+appDeployable.context = 'app'
+def uaaDeployable = new Deployable()
+uaaDeployable.file = file('uaa/build/libs/cloudfoundry-identity-uaa-' + version + '.war')
+uaaDeployable.context = 'uaa'
+
+
+task uaaRun(type: CargoStartLocal) {
+    homeDir = file("/tmp/uaa")
+    configHomeDir = file("/tmp/uaa_config")
+
+    dependsOn = [cleanCargoConfDir, assemble]
+    containerId = 'tomcat8x'
     port = 8080
+    rmiPort = 8205
 
-    deployable {
-        file = file('statsd/build/libs/cloudfoundry-identity-statsd-' + version + '.war')
-        context = 'statsd'
-    }
+    deployables = [
+            statsdDeployable, apiDeployable, appDeployable, uaaDeployable
+    ]
 
-    deployable {
-        file = file('samples/api/build/libs/cloudfoundry-identity-api-' + version + '.war')
-        context = 'api'
-    }
+    timeout = 540000
+    jvmArgs = "-javaagent:${jacocoLocation}=output=file,dumponexit=true,append=false,destfile=${integrationTestCoverageExecutionData} -DLOGIN_CONFIG_URL=file://" + new File(".").absolutePath + "/uaa/src/main/resources/required_configuration.yml"
+    outputFile = file('uaa/build/reports/tests/uaa-server.log')
+    configFiles = [tomcatConfig]
 
-    deployable {
-        file = file('samples/app/build/libs/cloudfoundry-identity-app-' + version + '.war')
-        context = 'app'
-    }
+    containerProperties = [
+            'cargo.tomcat.ajp.port': 7099
+    ]
 
-    local {
-        timeout = 540000
-        jvmArgs = "-javaagent:${jacocoLocation}=output=file,dumponexit=true,append=false,destfile=${integrationTestCoverageExecutionData} -DLOGIN_CONFIG_URL=file://" + new File(".").absolutePath + "/uaa/src/main/resources/required_configuration.yml"
-        outputFile = file('uaa/build/reports/tests/uaa-server.log')
-        configFile {
-            file = file('scripts/travis/tomcat-conf/context.xml')
-            toDir = 'conf'
+    systemProperties = [
+            'cargo.tomcat.ajp.port': '7009',
+            'spring.profiles.active'   : System.getProperty('spring.profiles.active', 'default'),
+            'metrics.perRequestMetrics': System.getProperty('metrics.perRequestMetrics', 'true'),
+            'smtp.host': 'localhost',
+            'smtp.port': 2525
+    ]
 
-        }
-        systemProperties {
-            property 'spring.profiles.active', System.getProperty('spring.profiles.active', 'default')
-            property 'metrics.perRequestMetrics', System.getProperty('metrics.perRequestMetrics', 'true')
-        }
-
-        installer {
-            installUrl = 'https://repo1.maven.org/maven2/org/apache/tomcat/tomcat/' + tomcatVersion + '/tomcat-' + tomcatVersion + '.tar.gz'
-            downloadDir = file("$buildDir/download")
-            extractDir = file("$buildDir/extract")
-        }
-    }
+    zipUrlInstaller = tomcatZipUrlInstaller
 }
 
-project.gradle.taskGraph.whenReady { TaskExecutionGraph graph ->
-    cargo {
-        deployable {
-            file = file('uaa/build/libs/cloudfoundry-identity-uaa-' + version + '.war')
-            context = 'uaa'
-        }
+def oidcDeployable = new Deployable()
+oidcDeployable.file = file('uaa/build/libs/cloudfoundry-identity-uaa-' + version + '.war')
+oidcDeployable.context = 'oidc'
 
-        local {
+task oidcRun(type: CargoStartLocal) {
+    homeDir = file("/tmp/oidc")
+    configHomeDir = file("/tmp/oidc_config")
 
-            systemProperties {
-                property 'smtp.host', 'localhost'
-                property 'smtp.port', 2525
-            }
-        }
-    }
-    project.allprojects.collect({ it.tasks.withType(Test) }).flatten().each {
-        it.systemProperty 'spring.profiles.active', System.getProperty('spring.profiles.active', 'default')
-    }
+    dependsOn = [cleanCargoConfDir, assemble]
+    containerId = 'tomcat8x'
+    port = 8081
+    rmiPort = 9205
+
+    containerProperties = [
+        'cargo.tomcat.ajp.port': 9099
+    ]
+
+    deployables = [
+            oidcDeployable
+    ]
+
+    timeout = 540000
+    jvmArgs = "-javaagent:${jacocoLocation}=output=file,dumponexit=true,append=false,destfile=${oidcIntegrationTestCoverageExecutionData} -DLOGIN_CONFIG_URL=file://" + new File(".").absolutePath + "/uaa/src/main/resources/required_configuration.yml"
+    outputFile = file('uaa/build/reports/tests/oidc-server.log')
+    configFiles = [tomcatConfig]
+
+
+    systemProperties = [
+            'cargo.tomcat.ajp.port': '9009',
+            'spring.profiles.active'                : 'default,hsqldb',
+            'ISSUER_URI'                            : "https://oidc10.oms.identity.team",
+            'JBP_CONFIG_SPRING_AUTO_RECONFIGURATION': "'[enabled: false]'",
+            'JBP_CONFIG_TOMCAT'                     : "{tomcat: { version: 8.0.+ }}",
+            'LOGIN_URL'                             : "http://oidc10.oms.identity.team",
+            'LOGIN_ENTITYBASEURL'                   : "https://oidc10.oms.identity.team",
+            'LOGIN_ENTITYID'                        : "https://oidc10.oms.identity.team",
+            'UAA_URL'                               : "http://oidc10.oms.identity.team"
+    ]
+
+    zipUrlInstaller = oidcTomcatZipUrlInstaller
 }
+
 
 apply plugin: 'com.github.kt3k.coveralls'
 
@@ -411,13 +464,13 @@ task mockAssertion(type: JavaExec) {
 task encrypt(type: JavaExec) {
     main = 'org.cloudfoundry.identity.uaa.Encryptor'
     args = System.getProperty("encryptArgs", null) == null ? [] : System.getProperty("encryptArgs").split(",").toList()
-    classpath = files(subprojects.find {it.name.contains('server') }.sourceSets.test.runtimeClasspath)
+    classpath = files(subprojects.find { it.name.contains('server') }.sourceSets.test.runtimeClasspath)
 }
 
 task decrypt(type: JavaExec) {
     main = 'org.cloudfoundry.identity.uaa.Decryptor'
     args = System.getProperty("decryptArgs", null) == null ? [] : System.getProperty("decryptArgs").split(",").toList()
-    classpath = files(subprojects.find {it.name.contains('server') }.sourceSets.test.runtimeClasspath)
+    classpath = files(subprojects.find { it.name.contains('server') }.sourceSets.test.runtimeClasspath)
 }
 
 

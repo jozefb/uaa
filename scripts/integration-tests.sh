@@ -14,6 +14,8 @@ cat <<EOF >>/etc/hosts
 127.0.0.1 testzone4.localhost
 127.0.0.1 testzonedoesnotexist.localhost
 127.0.0.1 oidcloginit.localhost
+127.0.0.1 oidc10.oms.identity.team
+127.0.0.1 simplesamlphp.cfapps.io
 EOF
 
 bootDB "${DB}"
