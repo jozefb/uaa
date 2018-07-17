@@ -209,7 +209,8 @@ public class UaaTokenServices implements AuthorizationServerTokenServices, Resou
         refreshTokenValue = tokenValidation.getJwt().getEncoded();
 
         @SuppressWarnings("unchecked")
-        ArrayList<String> tokenScopes = (ArrayList<String>) claims.get(SCOPE);
+        ArrayList<String> tokenScopes = getScopesFromRefreshToken(claims);
+
         if (isRestrictRefreshGrant() && !tokenScopes.contains(UAA_REFRESH_TOKEN)) {
             throw new InsufficientScopeException(String.format("Expected scope %s is missing", UAA_REFRESH_TOKEN));
         }
@@ -1002,6 +1003,13 @@ public class UaaTokenServices implements AuthorizationServerTokenServices, Resou
                                                                           userAuthentication);
         authentication.setAuthenticated(true);
         return authentication;
+    }
+
+    private ArrayList<String> getScopesFromRefreshToken(Map<String, Object> claims) {
+        if (claims.containsKey(GRANTED_SCOPES)) {
+            return (ArrayList<String>) claims.get(GRANTED_SCOPES);
+        }
+        return (ArrayList<String>) claims.get(SCOPE);
     }
 
     /**
