@@ -14,6 +14,7 @@ import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.oauth2.provider.ClientDetails;
+import org.springframework.security.oauth2.provider.ClientRegistrationException;
 
 import java.util.Date;
 import java.util.List;
@@ -78,11 +79,13 @@ public class IdTokenCreator {
         Date expiryDate = tokenValidityResolver.resolve(clientId);
         Date issuedAt = timeService.getCurrentDate();
 
+        ensureRequiredDataPresent(clientId, userId, userAuthenticationData);
+
         UaaUser uaaUser;
         try {
             uaaUser = uaaUserDatabase.retrieveUserById(userId);
         } catch (UsernameNotFoundException e) {
-            logger.error("Could not create ID token for unknown user " + userId, e);
+            logger.error("Could not create id_token for unknown user with userId:" + userId, e);
             throw new IdTokenCreationException();
         }
 
@@ -96,7 +99,14 @@ public class IdTokenCreator {
         Map<String, List<String>> userAttributes = buildUserAttributes(userAuthenticationData, uaaUser);
         Set<String> roles = buildRoles(userAuthenticationData, uaaUser);
 
-        ClientDetails clientDetails = clientServicesExtension.loadClientByClientId(clientId, identityZoneId);
+        ClientDetails clientDetails;
+        try {
+            clientDetails = clientServicesExtension.loadClientByClientId(clientId, identityZoneId);
+        } catch (ClientRegistrationException e) {
+            logger.error(String.format("Could not find client details for client:%s in zone:%s", clientId, identityZoneId), e);
+            throw new IdTokenCreationException();
+        }
+
         String clientTokenSalt = (String) clientDetails.getAdditionalInformation().get(ClientConstants.TOKEN_SALT);
         String revSig = getRevocableTokenSignature(uaaUser, clientTokenSalt, clientId, clientDetails.getClientSecret());
         return new IdToken(
@@ -125,6 +135,29 @@ public class IdTokenCreator {
             getIfNotExcluded(uaaUser.getOrigin(), ORIGIN),
             getIfNotExcluded(userAuthenticationData.jti, JTI),
             getIfNotExcluded(revSig, REVOCATION_SIGNATURE));
+    }
+
+    private void ensureRequiredDataPresent(String clientId, String userId, UserAuthenticationData userAuthenticationData) throws IdTokenCreationException {
+        if (userId == null) {
+            logErrorForMissingRequiredData(clientId, userId, "userId");
+            throw new IdTokenCreationException();
+        }
+        if (clientId == null) {
+            logErrorForMissingRequiredData(clientId, userId, "clientId");
+            throw new IdTokenCreationException();
+        }
+        if (userAuthenticationData.jti == null) {
+            logErrorForMissingRequiredData(clientId, userId, "jti");
+            throw new IdTokenCreationException();
+        }
+        if (userAuthenticationData.grantType == null) {
+            logErrorForMissingRequiredData(clientId, userId, "grant_type");
+            throw new IdTokenCreationException();
+        }
+    }
+
+    private void logErrorForMissingRequiredData(String clientId, String userId, String missingField) {
+        logger.error(String.format("Cannot create id_token for userId:%s clientId:%s without valid %s value", userId, clientId, missingField));
     }
 
     private String getIfScopeContainsProfile(String value, Set<String> scopes) {

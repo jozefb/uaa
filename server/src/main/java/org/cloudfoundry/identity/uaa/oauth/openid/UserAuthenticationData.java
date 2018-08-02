@@ -1,5 +1,7 @@
 package org.cloudfoundry.identity.uaa.oauth.openid;
 
+import com.google.common.collect.Sets;
+
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +30,11 @@ public class UserAuthenticationData {
         this.authTime = authTime;
         this.authenticationMethods = authenticationMethods;
         this.contextClassRef = contextClassRef;
-        this.scopes = scopes;
+        if (scopes != null) {
+            this.scopes = scopes;
+        } else {
+            this.scopes = Sets.newHashSet();
+        }
         this.roles = roles;
         this.userAttributes = userAttributes;
         this.nonce = nonce;

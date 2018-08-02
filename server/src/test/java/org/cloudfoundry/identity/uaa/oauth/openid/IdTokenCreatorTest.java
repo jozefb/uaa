@@ -3,6 +3,7 @@ package org.cloudfoundry.identity.uaa.oauth.openid;
 import org.cloudfoundry.identity.uaa.oauth.TokenEndpointBuilder;
 import org.cloudfoundry.identity.uaa.oauth.TokenValidityResolver;
 import org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants;
+import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
 import org.cloudfoundry.identity.uaa.user.UaaUser;
 import org.cloudfoundry.identity.uaa.user.UaaUserDatabase;
 import org.cloudfoundry.identity.uaa.user.UaaUserPrototype;
@@ -14,12 +15,15 @@ import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.joda.time.DateTimeUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.oauth2.provider.ClientRegistrationException;
 import org.springframework.security.oauth2.provider.client.BaseClientDetails;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -30,12 +34,15 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static org.cloudfoundry.identity.uaa.oauth.client.ClientConstants.TOKEN_SALT;
+import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_PASSWORD;
 import static org.hamcrest.CoreMatchers.hasItem;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.core.IsCollectionContaining.hasItems;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -73,16 +80,17 @@ public class IdTokenCreatorTest {
     private String jti;
     private String clientsecret;
     private String tokensalt;
+    private ClientServicesExtension clientDetailsService;
 
     @Before
     public void setup() throws Exception {
         issuerUrl = "http://localhost:8080/uaa/oauth/token";
         uaaUrl = "http://localhost:8080/uaa";
-        clientId = "clientId";
+        clientId = "foo_client";
         clientsecret = "clientsecret";
         tokensalt = "tokensalt";
-        userId = "userId";
-        zoneId = "zoneId";
+        userId = "abc-def-123";
+        zoneId = "twilight_zone";
         jti = "accessTokenId";
 
         expDate = new Date(100_000);
@@ -161,7 +169,7 @@ public class IdTokenCreatorTest {
             jti);
         excludedClaims = new HashSet<>();
 
-        ClientServicesExtension clientDetailsService = mock(ClientServicesExtension.class);
+        clientDetailsService = mock(ClientServicesExtension.class);
         BaseClientDetails clientDetails = new BaseClientDetails();
         clientDetails.setClientId(clientId);
         clientDetails.setClientSecret(clientsecret);
@@ -370,6 +378,13 @@ public class IdTokenCreatorTest {
         tokenCreator.create(clientId, "missing-user", userAuthenticationData);
     }
 
+    @Test(expected = IdTokenCreationException.class)
+    public void whenClientIdNotFound_throwsException() throws Exception {
+        when(clientDetailsService.loadClientByClientId("missing-client", zoneId)).thenThrow(ClientRegistrationException.class);
+
+        tokenCreator.create("missing-client", userId, userAuthenticationData);
+    }
+
     @Test
     public void idToken_containsZonifiedIssuerUrl() throws Exception {
         when(UaaTokenUtils.constructTokenEndpointUrl(uaaUrl)).thenReturn("http://myzone.localhost:8080/uaa/oauth/token");
@@ -377,5 +392,30 @@ public class IdTokenCreatorTest {
         IdToken idToken = tokenCreator.create(clientId, userId, userAuthenticationData);
 
         assertThat(idToken.iss, is("http://myzone.localhost:8080/uaa/oauth/token"));
+    }
+
+
+    @Test(expected = IdTokenCreationException.class)
+    public void create_throwsExceptionWhenJtiIsMissing() throws Exception {
+        UserAuthenticationData userAuthenticationData = new UserAuthenticationData(null, null, null, null, null, null, null, GRANT_TYPE_PASSWORD, null);
+        tokenCreator.create(clientId, userId, userAuthenticationData);
+    }
+
+    @Test(expected = IdTokenCreationException.class)
+    public void create_throwsWhenGrantTypeMissing() throws Exception {
+        UserAuthenticationData userAuthenticationData = new UserAuthenticationData(null, null, null, null, null, null, null, null, "jti");
+        tokenCreator.create(clientId, userId, userAuthenticationData);
+    }
+
+    @Test(expected = IdTokenCreationException.class)
+    public void create_throwsWhenUserIdMissing() throws Exception {
+        UserAuthenticationData userAuthenticationData = new UserAuthenticationData(null, null, null, null, null, null, null, GRANT_TYPE_PASSWORD, "jti");
+        tokenCreator.create(clientId, null, userAuthenticationData);
+    }
+
+    @Test(expected = IdTokenCreationException.class)
+    public void create_throwsWhenClientIdMissing() throws Exception {
+        UserAuthenticationData userAuthenticationData = new UserAuthenticationData(null, null, null, null, null, null, null, GRANT_TYPE_PASSWORD, "jti");
+        tokenCreator.create(null, userId, userAuthenticationData);
     }
 }
