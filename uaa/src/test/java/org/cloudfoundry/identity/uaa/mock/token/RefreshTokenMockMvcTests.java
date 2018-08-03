@@ -18,6 +18,7 @@ import com.google.common.collect.Lists;
 import org.apache.directory.api.util.Base64;
 import org.apache.http.HttpStatus;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
+import org.cloudfoundry.identity.uaa.oauth.TokenValidityResolver;
 import org.cloudfoundry.identity.uaa.oauth.UaaTokenServices;
 import org.cloudfoundry.identity.uaa.oauth.jwt.Jwt;
 import org.cloudfoundry.identity.uaa.oauth.jwt.JwtHelper;
@@ -54,8 +55,10 @@ import java.util.Map;
 import static junit.framework.TestCase.assertNull;
 import static org.cloudfoundry.identity.uaa.oauth.token.CompositeToken.ID_TOKEN;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.core.IsNot.not;
+import static org.hamcrest.core.StringStartsWith.startsWith;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
@@ -63,6 +66,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.oauth2.common.OAuth2AccessToken.ACCESS_TOKEN;
+import static org.springframework.security.oauth2.common.OAuth2AccessToken.EXPIRES_IN;
 import static org.springframework.security.oauth2.common.OAuth2AccessToken.REFRESH_TOKEN;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -117,6 +121,8 @@ public class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
         UaaTokenServices uaaTokenServices = getWebApplicationContext().getBean(UaaTokenServices.class);
         RefreshTokenCreator refreshTokenCreator = getWebApplicationContext().getBean(RefreshTokenCreator.class);
         IdTokenCreator idTokenCreator = getWebApplicationContext().getBean(IdTokenCreator.class);
+        TokenValidityResolver refreshTokenValidityResolver = (TokenValidityResolver) getWebApplicationContext().getBean("refreshTokenValidityResolver");
+        refreshTokenValidityResolver.setTimeService(timeService);
         uaaTokenServices.setTimeService(timeService);
         idTokenCreator.setTimeService(timeService);
         refreshTokenCreator.setTimeService(timeService);
@@ -156,6 +162,35 @@ public class RefreshTokenMockMvcTests extends AbstractTokenMockMvcTests {
         deleteUser(user, zone.getId());
 
         IdentityZoneHolder.clear();
+    }
+
+    @Test
+    public void refreshTokenGrantType_rejectsRefreshTokensThatAreExpired() throws Exception {
+        client = setUpClients("openidclient", "", "openid", "password,refresh_token", true);
+        user = setUpUser("openiduser", "", OriginKeys.UAA, "uaa");
+        int refreshTokenValiditySeconds = IdentityZoneHolder.get().getConfig().getTokenPolicy().getRefreshTokenValidity();
+        Long initialTokenRequestTimeMillis = 1000L;
+        when(timeService.getCurrentTimeMillis()).thenReturn(initialTokenRequestTimeMillis);
+        Map<String, Object> tokenResponse = getTokens(client.getClientId(), SECRET, user.getUserName(), SECRET, "localhost", "jwt");
+
+        String refreshToken = (String) tokenResponse.get(REFRESH_TOKEN);
+        assertThat(UaaTokenUtils.getClaims(refreshToken).get(ClaimConstants.EXP), equalTo(refreshTokenValiditySeconds + initialTokenRequestTimeMillis / 1000));
+
+        long timeWhenRefreshTokenShouldBeExpiredMillis = initialTokenRequestTimeMillis + refreshTokenValiditySeconds * 1000L + 1; // we want the token to be expired
+        when(timeService.getCurrentTimeMillis()).thenReturn(timeWhenRefreshTokenShouldBeExpiredMillis);
+
+        getMockMvc().perform(
+                post("/oauth/token")
+                        .header("Host", "localhost")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+                        .param(OAuth2Utils.RESPONSE_TYPE, "token")
+                        .param(OAuth2Utils.GRANT_TYPE, REFRESH_TOKEN)
+                        .param(REFRESH_TOKEN, refreshToken)
+                        .param("client_secret", SECRET)
+                        .param(OAuth2Utils.CLIENT_ID, client.getClientId()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error_description").value(startsWith("Invalid refresh token expired")));
     }
 
     @Test

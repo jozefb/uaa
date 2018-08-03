@@ -734,12 +734,12 @@ public class UaaTokenServices implements AuthorizationServerTokenServices, Resou
     }
 
     CompositeToken persistRevocableToken(String tokenId,
-                                                CompositeToken token,
-                                                CompositeExpiringOAuth2RefreshToken refreshToken,
-                                                String clientId,
-                                                String userId,
-                                                boolean isOpaque,
-                                                boolean isRevocable) {
+                                         CompositeToken token,
+                                         CompositeExpiringOAuth2RefreshToken refreshToken,
+                                         String clientId,
+                                         String userId,
+                                         boolean isOpaque,
+                                         boolean isRevocable) {
 
         String scope = token.getScope().toString();
         long now = System.currentTimeMillis();

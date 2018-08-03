@@ -23,10 +23,12 @@ import static com.jayway.jsonassert.impl.matcher.IsMapContainingKey.hasKey;
 import static org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants.ACR;
 import static org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants.AMR;
 import static org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants.AUTH_TIME;
+import static org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants.EXP;
 import static org.hamcrest.CoreMatchers.hasItem;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -41,7 +43,7 @@ public class RefreshTokenCreatorTest {
     @Before
     public void setup() throws Exception {
         validityResolver = mock(TokenValidityResolver.class);
-        when(validityResolver.resolve("someclient")).thenReturn(new Date());
+        when(validityResolver.resolve("someclient")).thenReturn(new Date(15000L));
         TokenEndpointBuilder tokenEndpointBuilder = new TokenEndpointBuilder("http://localhost");
         refreshTokenCreator = new RefreshTokenCreator(false, validityResolver, tokenEndpointBuilder, new TimeServiceImpl());
         IdentityZoneHolder.get().getConfig().getTokenPolicy().setActiveKeyId("newKey");
@@ -61,6 +63,31 @@ public class RefreshTokenCreatorTest {
     public void whenRefreshGrantRestricted_requiresOfflineScope() {
         refreshTokenCreator.setRestrictRefreshGrant(true);
         refreshTokenCreator.ensureRefreshTokenCreationNotRestricted(Lists.newArrayList("openid", "uaa.offline_token"));
+    }
+
+    @Test
+    public void refreshToken_includesExpiryInSecondsSince1970() {
+        UaaUser user = new UaaUser(new UaaUserPrototype()
+                .withId("id")
+                .withEmail("spongebob@krustykrab.com")
+                .withUsername("spongebob")
+                .withOrigin("uaa")
+        );
+        RefreshTokenRequestData refreshTokenRequestData = new RefreshTokenRequestData(
+                "refresh_token",
+                Sets.newHashSet(),
+                Sets.newHashSet("pwd"),
+                null,
+                Sets.newHashSet(),
+                "someclient",
+                false,
+                new Date(1000L),
+                Sets.newHashSet("urn:oasis:names:tc:SAML:2.0:ac:classes:Password"),
+                Maps.newHashMap());
+
+        ExpiringOAuth2RefreshToken refreshToken = refreshTokenCreator.createRefreshToken(user, refreshTokenRequestData, "abcdef");
+
+        assertEquals(15L, ((Integer) UaaTokenUtils.getClaims(refreshToken.getValue()).get(EXP)).longValue());
     }
 
     @Test
