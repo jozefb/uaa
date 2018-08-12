@@ -9,8 +9,9 @@ import org.cloudfoundry.identity.uaa.oauth.token.CompositeToken;
 import org.cloudfoundry.identity.uaa.test.TestWebAppContext;
 import org.cloudfoundry.identity.uaa.user.JdbcUaaUserDatabase;
 import org.cloudfoundry.identity.uaa.user.UaaUser;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.common.OAuth2AccessToken;
@@ -18,7 +19,7 @@ import org.springframework.security.oauth2.provider.AuthorizationRequest;
 import org.springframework.security.oauth2.provider.OAuth2Authentication;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.context.web.WebAppConfiguration;
 
 import java.util.Arrays;
@@ -34,7 +35,7 @@ import static org.hamcrest.CoreMatchers.startsWith;
 import static org.junit.Assert.assertThat;
 
 
-@RunWith(SpringJUnit4ClassRunner.class)
+@ExtendWith(SpringExtension.class)
 @ActiveProfiles("default")
 @WebAppConfiguration
 @ContextConfiguration(classes = TestWebAppContext.class)
@@ -57,6 +58,7 @@ public class UaaTokenServicesTests {
     @Autowired
     private JdbcUaaUserDatabase jdbcUaaUserDatabase;
 
+    @DisplayName("😱")
     @Test
     public void ensureJKUHeaderIsSetWhenBuildingAnAccessToken() {
         AuthorizationRequest authorizationRequest = new AuthorizationRequest(clientId, Arrays.asList(Strings.split(clientScopes, ',')));
