@@ -3,6 +3,7 @@
       xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
       xmlns:sec="http://www.thymeleaf.org/thymeleaf-extras-springsecurity3"
+      th:lang="${#locale.language}"
       layout:decorator="layouts/main">
 <head>
     <th:block layout:include="nav :: head"></th:block>
@@ -32,16 +33,16 @@
         <div th:if="${param.error_message_code}" class="alert alert-error">
             <p th:text="#{${param.error_message_code[0]}}">Error Message</p>
         </div>
-        <h1>Account Settings</h1>
+        <h1 th:text="#{approvals.title}">Account Settings</h1>
         <div class="panel-content">
-            <h2>Profile</h2>
+            <h2 th:text="#{approvals.profile.title}">Profile</h2>
             <p class="profile">
-                <span class="email" sec:authentication="principal.email">user@example.com</span><a href="/change_email" th:href="@{/change_email}" th:if="${isUaaManagedUser}">Change Email</a>
-                <span class="password">********</span><a href="/change_password" th:href="@{/change_password}" th:if="${isUaaManagedUser}">Change Password</a>
+                <span class="email" sec:authentication="principal.email">user@example.com</span><a href="/change_email" th:href="@{/change_email}" th:if="${isUaaManagedUser}"><span th:text="#{approvals.profile.action.change_email}" th:remove="tag"></span></a>
+                <span class="password">********</span><a href="/change_password" th:href="@{/change_password}" th:if="${isUaaManagedUser}"><span th:text="#{approvals.profile.action.change_password}" th:remove="tag"></span></a>
             </p>
-            <h2>Third Party Access</h2>
-            <p th:text="${approvals.size() > 0 ? 'These applications have been granted access to your account.' : 'You have not yet authorized any third party applications.'}">
-                These applications have been granted access to your account.
+            <h2><span th:text="#{approvals.third_party_access.title}" th:remove="tag"></span></h2>
+            <p>
+                <span th:text="#{${approvals.size() > 0} ? 'approvals.third_party_access.apps' : 'approvals.third_party_access.apps.none'}" th:remove="tag"></span>
             </p>
             <th:block th:each="client : ${approvals}">
                 <form action="/profile" th:action="@{/profile}" method="POST"
