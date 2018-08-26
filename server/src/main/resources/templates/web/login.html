@@ -1,10 +1,14 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout" layout:decorator="layouts/main">
+<html
+        xmlns:th="http://www.thymeleaf.org"
+        xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+        th:lang="${#locale.language}"
+        layout:decorator="layouts/main">
 <head>
     <meta http-equiv="refresh" th:content="${@loginCookieCsrfRepository.getCookieMaxAge()}" />
 </head>
 <div class="island" layout:fragment="page-content">
-    <h1 th:text="${T(org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder).uaa ? 'Welcome!':'Welcome to '+zone_name+'!'}">Welcome!</h1>
+    <h1 th:text="#{login.welcome}">Welcome!</h1>
     <div class="island-content">
         <div th:if="${param.error}" th:unless="${error}" class="alert alert-error">
             <p th:text="#{'login.' + ${param.error[0]}}">Error Message</p>
@@ -23,7 +27,7 @@
                    th:placeholder="${prompt.value[1]}"
                    th:attr="autocomplete=${(prompt.value[0] == 'password') ? 'off' : null}"
                    class="form-control"/>
-            <input type="submit" value="Sign in" class="island-button"/>
+            <input type="submit" th:value="#{login.sign_in}" class="island-button"/>
             <input th:if="${session.SPRING_SECURITY_SAVED_REQUEST}"
                    th:unless="${form_redirect_uri}"
                    th:name="form_redirect_uri"
@@ -57,9 +61,9 @@
         </div>
         <th:block th:if="${linkCreateAccountShow}">
         <span class="left">
-            <a th:unless="${#strings.isEmpty(links['createAccountLink'])}" href="/create_account" th:href="@{${links['createAccountLink']}}" class="link-lowlight">Create account</a>
+            <a th:unless="${#strings.isEmpty(links['createAccountLink'])}" href="/create_account" th:href="@{${links['createAccountLink']}}" class="link-lowlight"><span th:text="#{login.link.create_account}" th:remove="tag"></a>
         </span><span class="right" th:unless="${#strings.isEmpty(links['forgotPasswordLink'])}">
-            <a href="/forgot_password" th:href="@{${links['forgotPasswordLink']}}" class="link-lowlight">Reset password</a>
+            <a href="/forgot_password" th:href="@{${links['forgotPasswordLink']}}" class="link-lowlight"><span th:text="#{login.link.reset_password}" th:remove="tag"></span></a>
         </span>
         </th:block>
     </div>

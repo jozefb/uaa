@@ -188,6 +188,8 @@ scim:
     uaa.admin: Act as an administrator throughout the UAA
     uaa.none: Forbid acting as a user
     uaa.offline_token: Allow offline access
+  users:
+    - admin|UzeAiDpF3W|noreply@liquidtool.com|John|Admin|blaser.adm,app.ltm,app.lta,uaa.admin,tokens.revoke,openid,api.iam.*,scim.create,scim.read,scim.write,admin-portal,liquid-tool-portal,ltc-gateway,index.aspects-valuation.read,index.coolant.read,index.coolant-system.read,index.currency.read,index.digital-service.read,index.machine.read,index.manufacturer.read,index.material.read,index.operation.read,index.property.read,index.regional-data.read,index.resource.read,index.service.read,index.technical-unit.read,index.tool.read,index.value-driver.read,api.coolant.read,api.import.read,api.customer.read,api.machine.read,api.material-operation.read,api.situation-analysis.read,api.sensor-data-service.read,api.event-service.read,api.asset.read,api.lto.read,board.read,script.read,profile.read,converter.read,environment.read,sensor.read,log.read,setting.read,session.read,api.notification.read, api.report.read,api.comment-service.read,clients.write,clients.admin
 
 oauth:
   user:

@@ -366,6 +366,16 @@
     <import resource="spring/authentication.xml" />
     <import resource="spring/identity-zones.xml" />
 
+    <bean id="localeResolver" class="org.springframework.web.servlet.i18n.SessionLocaleResolver">
+        <property name="defaultLocale" value="en"/>
+    </bean>
+
+    <mvc:interceptors>
+        <bean class="org.springframework.web.servlet.i18n.LocaleChangeInterceptor">
+            <property name="paramName" value="lang"/>
+        </bean>
+    </mvc:interceptors>
+
     <bean id="messageSource" class="org.springframework.context.support.ReloadableResourceBundleMessageSource">
       <property name="basenames">
         <list>

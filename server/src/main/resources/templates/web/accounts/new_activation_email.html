@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      th:lang="${#locale.language}"
       layout:decorator="layouts/main">
 <div th:switch="${error_message_code}" class="island-landscape" layout:fragment="page-content">
     <div class="island-title">
-        <h1>Create your <th:block th:text="${!companyName.equals('Cloud Foundry') and isUaa ? (companyName + ' account') : 'account'}">account</th:block></h1>
+        <h1 th:text="#{new_activation.title(${!companyName.equals('Cloud Foundry') and isUaa ? (companyName) : 'account'})}">Create account</h1>
     </div>
 
     <div th:case = "'other_idp'" class="island-content">
@@ -27,9 +28,9 @@
             </div>
             <input type="hidden" name="client_id" th:value="${client_id}"/>
             <input type="hidden" name="redirect_uri" th:value="${redirect_uri}"/>
-            <input name="email" type="email" placeholder="Enter your email" autofocus="autofocus" required="required" class="form-control"/>
-            <input name="password" type="password" required="required" placeholder="Password" autocomplete="off" class="form-control"/>
-            <input name="password_confirmation" type="password" required="required" placeholder="Confirm" autocomplete="off" class="form-control"/>
+            <input name="email" type="email" th:placeholder="#{new_activation.email}" autofocus="autofocus" required="required" class="form-control"/>
+            <input name="password" type="password" required="required" th:placeholder="#{new_activation.password}" autocomplete="off" class="form-control"/>
+            <input name="password_confirmation" type="password" required="required" th:placeholder="#{new_activation.password_confirmation}" autocomplete="off" class="form-control"/>
 
             <label th:if="${consent_text}" style="margin-bottom: 20px">
                 <input name="does_user_consent" type="checkbox" style="display: inline">
@@ -38,12 +39,12 @@
                 <a th:if="${consent_link}" th:text="${consent_text}" name="consent-link" th:href="@{${consent_link}}" target="_blank"></a>
             </label>
 
-            <input type="submit" value="Send activation link" class="island-button"/>
+            <input type="submit" th:value="#{new_activation.action.submit}" class="island-button"/>
         </form>
     </div>
 
     <div class="island-footer">
-        <a href="/login" th:href="@{/login}" class="link-lowlight">Already joined? Sign in.</a>
+        <a href="/login" th:href="@{/login}" class="link-lowlight"><span th:text="#{new_activation.action.sign_in}" th:remove="tag"></span></a>
     </div>
 </div>
 </html>
