@@ -1,22 +1,23 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head lang="en">
+<html xmlns:th="http://www.thymeleaf.org"
+      th:lang="${#locale.language}">
+<head>
     <meta charset="UTF-8" />
 </head>
 <body>
-<p>
+<p th:text="#{verify_email.request_sent(${servicePhrase},${email},${newEmail})}">
     A request has been made to change the email for <th:block th:text="${servicePhrase}">an ExampleService</th:block> from <th:block th:text="${email}">user@example.com</th:block> to <th:block th:text="${newEmail}">new@example.com</th:block>.
 </p>
 <p>
-    Click <a href="http://login.example.com/login/verify_email?code=some_code"
-       th:href="@{${verifyUrl}(code=${code})}">Verify your email</a>
-    for the new email to be verified and the for the change to be reflected on your account.
+    <span th:text="#{verify_email.click}">Click</span> <a href="http://login.example.com/login/verify_email?code=some_code"
+       th:href="@{${verifyUrl}(code=${code})}"><span th:text="#{verify_email.verify_email}">Verify your email</span></a> 
+    <span th:text="#{verify_email.for_email_to_be_verified}">for the new email to be verified and the for the change to be reflected on your account.</span>
 </p>
-<p>
+<p th:text="#{verify_email.ignore}">
     If you did not make this request, simply ignore this message and your old email will continue to work.
 </p>
 <p>
-    Thank you,<br />
+    <span th:text="#{reset_password.thank_you}">Thank you</span>,<br />
     <th:block th:text="${serviceName}">The Administration</th:block>
 </p>
 </body>
