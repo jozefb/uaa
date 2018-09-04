@@ -14,9 +14,12 @@ import org.cloudfoundry.identity.uaa.oauth.jwt.JwtHelper;
 import org.cloudfoundry.identity.uaa.oauth.refresh.CompositeExpiringOAuth2RefreshToken;
 import org.cloudfoundry.identity.uaa.oauth.refresh.RefreshTokenCreator;
 import org.cloudfoundry.identity.uaa.oauth.refresh.RefreshTokenRequestData;
+import org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants;
 import org.cloudfoundry.identity.uaa.oauth.token.CompositeToken;
 import org.cloudfoundry.identity.uaa.user.JdbcUaaUserDatabase;
 import org.cloudfoundry.identity.uaa.user.UaaUser;
+import org.cloudfoundry.identity.uaa.util.UaaTokenUtils;
+import org.hamcrest.CoreMatchers;
 import org.joda.time.DateTime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +28,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,7 +43,11 @@ import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.cloudfoundry.identity.uaa.oauth.TokenTestSupport.GRANT_TYPE;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_AUTHORIZATION_CODE;
@@ -48,11 +56,17 @@ import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYP
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_PASSWORD;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_REFRESH_TOKEN;
 import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.CoreMatchers.startsWith;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
@@ -296,7 +310,7 @@ public class UaaTokenServicesTests {
               GRANT_TYPE_AUTHORIZATION_CODE,
               Sets.newHashSet("openid", "user_attributes"),
               null,
-              "openid",
+              "",
               Sets.newHashSet(""),
               "jku_test",
               false,
@@ -311,11 +325,114 @@ public class UaaTokenServicesTests {
 
         @Test
         public void happyCase() {
-            OAuth2AccessToken refreshToken = tokenServices.refreshAccessToken(this.refreshToken.getValue(), new TokenRequest(new HashMap<>(), "jku_test", Lists.newArrayList("openid", "user_attributes"), GRANT_TYPE_REFRESH_TOKEN));
+            OAuth2AccessToken refreshedToken = tokenServices.refreshAccessToken(this.refreshToken.getValue(), new TokenRequest(new HashMap<>(), "jku_test", Lists.newArrayList("openid", "user_attributes"), GRANT_TYPE_REFRESH_TOKEN));
 
-            assertThat(refreshToken, is(notNullValue()));
+            assertThat(refreshedToken, is(notNullValue()));
+        }
+
+        @Nested
+        @DisplayName("when ACR claim is present")
+        @WithSpring
+        class WhenAcrClaimIsPresent {
+
+            void setup(Set<String> acrs) {
+                RefreshTokenRequestData refreshTokenRequestData = new RefreshTokenRequestData(
+                  GRANT_TYPE_AUTHORIZATION_CODE,
+                  Sets.newHashSet("openid", "user_attributes"),
+                  null,
+                  "",
+                  Sets.newHashSet(""),
+                  "jku_test",
+                  false,
+                  new Date(),
+                  acrs,
+                  null
+                );
+                UaaUser uaaUser = jdbcUaaUserDatabase.retrieveUserByName("admin", "uaa");
+                refreshToken = refreshTokenCreator.createRefreshToken(uaaUser, refreshTokenRequestData, null);
+                assertThat(refreshToken, is(notNullValue()));
+            }
+
+            @ParameterizedTest
+            @MethodSource("org.cloudfoundry.identity.uaa.oauth.UaaTokenServicesTests#authenticationTestParams")
+            @DisplayName("an ID token is returned with ACR claim")
+            public void happyCase(List<String> acrs) {
+                setup(new HashSet<>(acrs));
+
+                HashMap<String, String> tokenRequestParams = new HashMap<String, String>() {{
+                    put("response_type", "id_token");
+                }};
+                CompositeToken refreshedToken = (CompositeToken) tokenServices.refreshAccessToken(
+                  refreshToken.getValue(),
+                  new TokenRequest(
+                    tokenRequestParams, "jku_test", Lists.newArrayList("openid", "user_attributes"), GRANT_TYPE_REFRESH_TOKEN
+                  )
+                );
+
+                assertThat(refreshedToken, is(notNullValue()));
+
+                Map<String, Object> claims = UaaTokenUtils.getClaims(refreshedToken.getIdTokenValue());
+                assertThat(claims.size(), greaterThan(0));
+                assertThat(claims, hasKey(ClaimConstants.ACR));
+                assertThat(claims.get(ClaimConstants.ACR), notNullValue());
+                assertThat((Map<String, Object>) claims.get(ClaimConstants.ACR), hasKey("values"));
+                List<String> values = (List<String>) ((Map<String, Object>) claims.get(ClaimConstants.ACR)).get("values");
+                assertThat(values, notNullValue());
+                assertThat(values, containsInAnyOrder(acrs.toArray()));
+            }
+        }
+
+        @Nested
+        @DisplayName("when AMR claim is present")
+        @WithSpring
+        class WhenAmrClaimIsPresent {
+
+            public void setup(List<String> amrs) {
+                RefreshTokenRequestData refreshTokenRequestData = new RefreshTokenRequestData(
+                  GRANT_TYPE_AUTHORIZATION_CODE,
+                  Sets.newHashSet("openid", "user_attributes"),
+                  Sets.newHashSet(amrs),
+                  null,
+                  Sets.newHashSet(""),
+                  "jku_test",
+                  false,
+                  new Date(),
+                  null,
+                  null
+                );
+                UaaUser uaaUser = jdbcUaaUserDatabase.retrieveUserByName("admin", "uaa");
+                refreshToken = refreshTokenCreator.createRefreshToken(uaaUser, refreshTokenRequestData, null);
+                assertThat(refreshToken, is(notNullValue()));
+            }
+
+            @DisplayName("an ID token is returned with AMR claim")
+            @ParameterizedTest
+            @MethodSource("org.cloudfoundry.identity.uaa.oauth.UaaTokenServicesTests#authenticationTestParams")
+            public void happyCase(List<String> amrs) {
+                setup(amrs);
+
+                HashMap<String, String> tokenRequestParams = new HashMap<String, String>() {{
+                    put("response_type", "id_token");
+                }};
+                CompositeToken refreshedToken = (CompositeToken) tokenServices.refreshAccessToken(
+                  refreshToken.getValue(),
+                  new TokenRequest(
+                    tokenRequestParams, "jku_test", Lists.newArrayList("openid", "user_attributes"), GRANT_TYPE_REFRESH_TOKEN
+                  )
+                );
+
+                assertThat(refreshedToken, is(notNullValue()));
+
+                Map<String, Object> claims = UaaTokenUtils.getClaims(refreshedToken.getIdTokenValue());
+                assertThat(claims.size(), greaterThan(0));
+                assertThat(claims, hasKey(ClaimConstants.AMR));
+                assertThat(claims.get(ClaimConstants.AMR), notNullValue());
+                List<String> actualAmrs = (List<String>) claims.get(ClaimConstants.AMR);
+                assertThat(actualAmrs, containsInAnyOrder(amrs.toArray()));
+            }
         }
     }
+
 
     private OAuth2Authentication constructUserAuthenticationFromAuthzRequest(AuthorizationRequest authzRequest,
                                                                              String userId,
@@ -330,6 +447,20 @@ public class UaaTokenServicesTests {
         return new OAuth2Authentication(authzRequest.createOAuth2Request(), userAuthentication);
     }
 
+    static Stream<List<String>> authenticationTestParams() {
+        List<String> validAcrs = Lists.newArrayList("val1", "val2");
+        List<String> nullAcrs = Lists.newArrayList((String) null);
+        List<String> validAcrsWithNull = Lists.newArrayList("val1", null, "val2");
+        List<String> intAcrs = Lists.newArrayList("2");
+
+        return Stream.of(
+          validAcrs,
+          nullAcrs,
+          validAcrsWithNull,
+          intAcrs
+        );
+
+    }
     private AuthorizationRequest constructAuthorizationRequest(String grantType, String... scopes) {
         AuthorizationRequest authorizationRequest = new AuthorizationRequest(clientId, Arrays.asList(scopes));
         Map<String, String> azParameters = new HashMap<>(authorizationRequest.getRequestParameters());
