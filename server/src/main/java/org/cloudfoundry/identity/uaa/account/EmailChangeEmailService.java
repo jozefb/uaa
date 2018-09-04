@@ -26,6 +26,7 @@ import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.zone.ClientServicesExtension;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.security.oauth2.provider.ClientDetails;
 import org.springframework.security.oauth2.provider.NoSuchClientException;
 import org.springframework.util.StringUtils;
@@ -33,11 +34,7 @@ import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
 import java.sql.Timestamp;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static org.cloudfoundry.identity.uaa.codestore.ExpiringCodeType.EMAIL;
 import static org.cloudfoundry.identity.uaa.util.UaaUrlUtils.findMatchingRedirectUri;
@@ -163,6 +160,7 @@ public class EmailChangeEmailService implements ChangeEmailService {
         ctx.setVariable("newEmail", newEmail);
         ctx.setVariable("email", email);
         ctx.setVariable("verifyUrl", verifyUrl);
+        ctx.setLocale(LocaleContextHolder.getLocale());
         return templateEngine.process("verify_email", ctx);
     }
 

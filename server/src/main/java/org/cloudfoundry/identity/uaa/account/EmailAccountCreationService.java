@@ -17,6 +17,7 @@ import org.cloudfoundry.identity.uaa.scim.validate.PasswordValidator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.zone.ClientServicesExtension;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.provider.ClientDetails;
 import org.springframework.security.oauth2.provider.NoSuchClientException;
@@ -184,6 +185,7 @@ public class EmailAccountCreationService implements AccountCreationService {
         ctx.setVariable("code", code);
         ctx.setVariable("email", email);
         ctx.setVariable("accountsUrl", accountsUrl);
+        ctx.setLocale(LocaleContextHolder.getLocale());
         return templateEngine.process("activate", ctx);
     }
 }

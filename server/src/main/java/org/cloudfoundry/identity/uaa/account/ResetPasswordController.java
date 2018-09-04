@@ -26,6 +26,7 @@ import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Controller;
@@ -132,6 +133,7 @@ public class ResetPasswordController {
         ctx.setVariable("serviceName", getServiceName());
         ctx.setVariable("code", code);
         ctx.setVariable("resetUrl", resetUrl);
+        ctx.setLocale(LocaleContextHolder.getLocale());
         return templateEngine.process("reset_password", ctx);
     }
 
@@ -142,6 +144,7 @@ public class ResetPasswordController {
         ctx.setVariable("serviceName", getServiceName());
         ctx.setVariable("email", email);
         ctx.setVariable("hostname", hostname);
+        ctx.setLocale(LocaleContextHolder.getLocale());
         return templateEngine.process("reset_password_unavailable", ctx);
     }
 
