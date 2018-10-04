@@ -14,7 +14,6 @@
  */
 package org.cloudfoundry.identity.uaa.login;
 
-import com.google.common.collect.Lists;
 import org.apache.commons.codec.binary.Base64;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
@@ -34,6 +33,7 @@ import org.cloudfoundry.identity.uaa.user.UaaAuthority;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
+import org.junit.Before;
 import org.junit.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -68,9 +68,7 @@ import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.*;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.TokenFormat.OPAQUE;
 import static org.cloudfoundry.identity.uaa.provider.saml.idp.SamlTestUtils.createLocalSamlIdpDefinition;
 import static org.cloudfoundry.identity.uaa.test.SnippetUtils.parameterWithName;
-import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
-import static org.junit.Assert.assertThat;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.http.HttpHeaders.HOST;
 import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED;
@@ -101,8 +99,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     private final ParameterDescriptor grantTypeParameter = parameterWithName(GRANT_TYPE).required().type(STRING).description("OAuth 2 grant type");
-    private final ParameterDescriptor responseTypeParameter = parameterWithName(RESPONSE_TYPE).required().type(STRING).description("The type of token that should be issued.");
-    private final ParameterDescriptor responseTypeOptionalParameter = parameterWithName(RESPONSE_TYPE).optional(null).type(STRING).description("The type of token that should be issued.");
 
     private final ParameterDescriptor clientIdParameter = parameterWithName(CLIENT_ID).optional(null).type(STRING).description("A unique string representing the registration information provided by the client, the recipient of the token. Optional if it is passed as part of the Basic Authorization header.");
     private final ParameterDescriptor clientSecretParameter = parameterWithName("client_secret").optional(null).type(STRING).description("The secret passphrase configured for the OAuth client. Optional if it is passed as part of the Basic Authorization header.");
@@ -128,14 +124,13 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         fieldWithPath("[].tokenId").type(STRING).description("The unique ID for the token"),
         fieldWithPath("[].clientId").type(STRING).description("Client ID for this token, will always match the client_id claim in the access token used for this call"),
         fieldWithPath("[].userId").optional().type(STRING).description("User ID for this token, will always match the user_id claim in the access token used for this call"),
-        fieldWithPath("[].format").type(STRING).description("What format was requested, OPAQUE or JWT"),
+        fieldWithPath("[].format").type(STRING).description("What format was requested, possible values OPAQUE or JWT"),
         fieldWithPath("[].expiresAt").type(NUMBER).description("Token expiration date, as a epoch timestamp, in milliseconds between the expires time and midnight, January 1, 1970 UTC."),
         fieldWithPath("[].issuedAt").type(NUMBER).description("Token issue date as, a epoch timestamp, in milliseconds between the issued time and midnight, January 1, 1970 UTC."),
         fieldWithPath("[].scope").type(STRING).description("Comma separated list of scopes this token holds, up to 1000 characters"),
-        fieldWithPath("[].responseType").type(STRING).description("response type requested during the token request, possible values ID_TOKEN, ACCESS_TOKEN, REFRESH_TOKEN"),
+        fieldWithPath("[].responseType").type(STRING).description("Response type requested during the token request, possible values ACCESS_TOKEN or REFRESH_TOKEN"),
         fieldWithPath("[].value").optional().type(STRING).description("Access token value will always be null")
     );
-
 
     private static final HeaderDescriptor IDENTITY_ZONE_ID_HEADER = headerWithName(IdentityZoneSwitchingFilter.HEADER).description("May include this header to administer another zone if using `zones.<zoneId>.admin` or `uaa.admin` scope against the default UAA zone.").optional();
     private static final HeaderDescriptor IDENTITY_ZONE_SUBDOMAIN_HEADER = headerWithName(IdentityZoneSwitchingFilter.SUBDOMAIN_HEADER).optional().description("If using a `zones.<zoneId>.admin` scope/token, indicates what zone this request goes to by supplying a subdomain.");
@@ -143,9 +138,16 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     private ScimUser user;
 
+    @Before
+    public void createTestUser() throws Exception {
+        if (user == null) {
+            createUser();
+        }
+    }
+
     @Test
     public void getTokenUsingAuthCodeGrant() throws Exception {
-        createUser();
+
         String cfAccessToken = getUserOAuthAccessToken(
             getMockMvc(),
             "cf",
@@ -181,13 +183,11 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param(CLIENT_ID, "login")
             .param("client_secret", "loginsecret")
             .param(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE)
-            .param(RESPONSE_TYPE, "token id_token")
             .param("code", code)
             .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
             .param(REDIRECT_URI, redirect);
 
         Snippet requestParameters = requestParameters(
-            responseTypeParameter,
             clientIdParameter,
             parameterWithName(REDIRECT_URI).description("redirection URI to which the authorization server will send the user-agent back once access is granted (or denied)").attributes(SnippetUtils.constraints.value("Required if provided on authorization request"), SnippetUtils.type.value(STRING)),
             parameterWithName("code").description(codeDescription).attributes(SnippetUtils.constraints.value("Required"), SnippetUtils.type.value(STRING)),
@@ -220,14 +220,12 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param(CLIENT_ID, "login")
             .param("client_secret", "loginsecret")
             .param(GRANT_TYPE, GRANT_TYPE_CLIENT_CREDENTIALS)
-            .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
-            .param(RESPONSE_TYPE, "token");
+            .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue());
 
         Snippet requestParameters = requestParameters(
             clientIdParameter,
             grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `client_credentials`"),
             clientSecretParameter,
-            responseTypeOptionalParameter,
             opaqueFormatParameter
         );
 
@@ -251,13 +249,11 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .accept(APPLICATION_JSON)
             .contentType(APPLICATION_FORM_URLENCODED)
             .param(GRANT_TYPE, GRANT_TYPE_CLIENT_CREDENTIALS)
-            .param(RESPONSE_TYPE, "token")
             .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
             .header("Authorization", "Basic " + clientAuthorization);
 
         Snippet requestParameters = requestParameters(
             grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `client_credentials`"),
-            responseTypeOptionalParameter,
             opaqueFormatParameter
         );
 
@@ -277,7 +273,6 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     @Test
     public void getTokenUsingPasswordGrant() throws Exception {
-        createUser();
         MockHttpServletRequestBuilder postForToken = post("/oauth/token")
             .accept(APPLICATION_JSON)
             .contentType(APPLICATION_FORM_URLENCODED)
@@ -287,11 +282,9 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param("username", user.getUserName())
             .param("password", user.getPassword())
             .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
-            .param(RESPONSE_TYPE, "token id_token")
             .param("login_hint", URLEncoder.encode("{\"origin\":\"uaa\"}","utf-8"));
 
         Snippet requestParameters = requestParameters(
-            responseTypeParameter,
             clientIdParameter,
             grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `password`"),
             clientSecretParameter,
@@ -317,7 +310,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     @Test
     public void getTokenUsingMfaPasswordGrant() throws Exception {
-        createUser();
+
         setupForMfaPasswordGrant(user.getId());
 
         MockHttpServletRequestBuilder postForToken = post("/oauth/token")
@@ -330,11 +323,9 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param("password", user.getPassword())
             .param("mfaCode", String.valueOf(getMfaCodeFromCredentials(credentials)))
             .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
-            .param(RESPONSE_TYPE, "token id_token")
             .param("login_hint", URLEncoder.encode("{\"origin\":\"uaa\"}","utf-8"));
 
         Snippet requestParameters = requestParameters(
-            responseTypeParameter,
             clientIdParameter,
             grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `password`"),
             clientSecretParameter,
@@ -359,10 +350,8 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .andDo(document("{ClassName}/{methodName}", preprocessResponse(prettyPrint()), requestParameters, responseFields));
     }
 
-
     @Test
     public void getTokenUsingUserTokenGrant() throws Exception {
-        createUser();
         String token = MockMvcUtils.getUserOAuthAccessToken(getMockMvc(),
                                                             "oauth_showcase_user_token",
                                                             "secret",
@@ -378,15 +367,13 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param(CLIENT_ID, "app")
             .param(GRANT_TYPE, GRANT_TYPE_USER_TOKEN)
             .param(SCOPE, "openid")
-            .param(REQUEST_TOKEN_FORMAT, "jwt")
-            .param(RESPONSE_TYPE, "token");
+            .param(REQUEST_TOKEN_FORMAT, "jwt");
 
         Snippet requestHeaders = requestHeaders(
             authorizationHeader.required().description("A bearer token on behalf of a user with the scope uaa.user present")
         );
 
         Snippet requestParameters = requestParameters(
-            responseTypeParameter.description("Response type of the grant, should be set to `token`"),
             clientIdParameter.description("The client ID of the receiving client, this client must have `refresh_token` grant type"),
             grantTypeParameter.description("The type of token grant requested, in this case `"+GRANT_TYPE_USER_TOKEN+"`"),
             opaqueFormatParameter.description("This parameter is ignored. The refresh_token will always be opaque"),
@@ -497,7 +484,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     @Test
     public void getTokenWithClientAuthInHeader() throws Exception {
-        createUser();
+
         String clientAuthorization = new String(Base64.encodeBase64("app:appclientsecret".getBytes()));
         MockHttpServletRequestBuilder postForToken = post("/oauth/token")
             .accept(APPLICATION_JSON)
@@ -506,11 +493,9 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param(GRANT_TYPE, GRANT_TYPE_PASSWORD)
             .param("username", user.getUserName())
             .param("password", user.getPassword())
-            .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
-            .param(RESPONSE_TYPE, "token id_token");
+            .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue());
 
         Snippet requestParameters = requestParameters(
-            responseTypeParameter,
             grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `password`"),
             parameterWithName("username").required().type(STRING).description("the username for the user trying to get a token"),
             parameterWithName("password").required().type(STRING).description("the password for the user trying to get a token"),
@@ -564,11 +549,9 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .header("Authorization", "Basic " + clientAuthorization)
             .param(GRANT_TYPE, GRANT_TYPE_PASSWORD)
             .param("passcode", passcode)
-            .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
-            .param(RESPONSE_TYPE, "token id_token");
+            .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue());
 
         Snippet requestParameters = requestParameters(
-            responseTypeParameter,
             grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `password`"),
             parameterWithName("passcode").required().type(STRING).description("the one-time passcode for the user which can be retrieved by going to `/passcode`"),
             opaqueFormatParameter
@@ -592,7 +575,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     @Test
     public void refreshToken() throws Exception {
-        createUser();
+
         MockHttpServletRequestBuilder postForToken = post("/oauth/token")
             .accept(APPLICATION_JSON)
             .contentType(APPLICATION_FORM_URLENCODED)
@@ -601,8 +584,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param(GRANT_TYPE, GRANT_TYPE_PASSWORD)
             .param("username", user.getUserName())
             .param("password", user.getPassword())
-            .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
-            .param(RESPONSE_TYPE, "token");
+            .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue());
 
         MvcResult mvcResult = getMockMvc().perform(postForToken).andExpect(status().isOk()).andReturn();
         OAuth2RefreshToken refreshToken = JsonUtils.readValue(mvcResult.getResponse().getContentAsString(), CompositeToken.class).getRefreshToken();
@@ -613,13 +595,11 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param(CLIENT_ID, "app")
             .param("client_secret", "appclientsecret")
             .param(GRANT_TYPE, GRANT_TYPE_REFRESH_TOKEN)
-            .param(RESPONSE_TYPE, "token id_token")
             .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
             .param("refresh_token", refreshToken.getValue());
 
         Snippet requestParameters = requestParameters(
             grantTypeParameter.description("the type of authentication being used to obtain the token, in this case `refresh_token`"),
-            responseTypeOptionalParameter,
             clientIdParameter,
             clientSecretParameter,
             parameterWithName("refresh_token").required().type(STRING).description("the refresh_token that was returned along with the access token."),
@@ -652,7 +632,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
 
     @Test
     public void getIdTokenUsingAuthCodeGrant() throws Exception {
-        createUser();
+
         String cfAccessToken = getUserOAuthAccessToken(
             getMockMvc(),
             "cf",
@@ -684,13 +664,11 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             .param(CLIENT_ID, "login")
             .param("client_secret", "loginsecret")
             .param(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE)
-            .param(RESPONSE_TYPE, "id_token")
             .param("code", code)
             .param(REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
             .param(REDIRECT_URI, redirect);
 
         Snippet requestParameters = requestParameters(
-            parameterWithName(RESPONSE_TYPE).required().type(STRING).description("the type of token that should be issued. possible values are `id_token token` and `id_token`."),
             clientIdParameter,
             parameterWithName(REDIRECT_URI).type(STRING).description("redirection URI to which the authorization server will send the user-agent back once access is granted (or denied)").attributes(SnippetUtils.constraints.value("Required if provided on authorization request")),
             parameterWithName("code").required().type(STRING).description(codeDescription),
@@ -724,7 +702,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         );
         BaseClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "clients.read");
 
-        createUser();
+
         String userInfoToken = getUserOAuthAccessToken(
                 getMockMvc(),
                 client.getClientId(),
@@ -735,7 +713,11 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         );
 
         Snippet requestHeaders = requestHeaders(
-            headerWithName("Authorization").description("Bearer token with `uaa.admin` or `tokens.revoke` scope. Any token with the matching user_id may also be used for self revocation."),
+            headerWithName("Authorization").description(
+                    "Bearer token with one of: " +
+                            "`uaa.admin` scope OR " +
+                            "`tokens.revoke` scope OR " +
+                            "matching `user_id`"),
             IDENTITY_ZONE_ID_HEADER,
             IDENTITY_ZONE_SUBDOMAIN_HEADER
         );
@@ -768,7 +750,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         BaseClientDetails client = createClient(adminToken, "openid", "password", "");
         BaseClientDetails client2 = createClient(adminToken, "openid", "password", "");
 
-        createUser();
+
         String userInfoTokenToRevoke = getUserOAuthAccessToken(
             getMockMvc(),
             client.getClientId(),
@@ -787,7 +769,12 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         );
 
         Snippet requestHeaders = requestHeaders(
-            headerWithName("Authorization").description("Bearer token with uaa.admin or tokens.revoke scope. Any token with the matching user_id and client_id may also be used for self revocation."),
+            headerWithName("Authorization").description(
+                    "Bearer token with one of: " +
+                            "`uaa.admin` scope OR " +
+                            "`tokens.revoke` scope OR " +
+                            "(matching `user_id` AND `client_id`)"
+            ),
             IDENTITY_ZONE_ID_HEADER,
             IDENTITY_ZONE_SUBDOMAIN_HEADER
         );
@@ -872,7 +859,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         );
 
         BaseClientDetails client = createClient(adminToken, "openid", "client_credentials,password", "clients.read");
-        createUser();
+
 
         String userInfoToken = getUserOAuthAccessToken(
                 getMockMvc(),
@@ -886,11 +873,20 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
         );
 
         Snippet requestHeaders = requestHeaders(
-            headerWithName(HttpHeaders.AUTHORIZATION).description("Bearer token with `uaa.admin` or `tokens.revoke` scope. You can use any token with matching token ID to revoke itself."),
+            headerWithName("Authorization").description(
+                    "Bearer token with one of: " +
+                            "`uaa.admin` scope OR " +
+                            "`tokens.revoke` scope OR " +
+                            "the token ID to be revoked"
+            ),
             IDENTITY_ZONE_ID_HEADER,
             IDENTITY_ZONE_SUBDOMAIN_HEADER
         );
-        Snippet pathParameters = pathParameters(parameterWithName("tokenId").description("The identifier for the token to be revoked. For JWT tokens use the `jti` claim in the token."));
+        Snippet pathParameters = pathParameters(parameterWithName("tokenId").description(
+                "The identifier for the token to be revoked. " +
+                        "For opaque tokens, use the token itself. " +
+                        "For JWT tokens use the `jti` claim in the token."
+        ));
 
         MockHttpServletRequestBuilder delete = RestDocumentationRequestBuilders.delete("/oauth/token/revoke/{tokenId}", userInfoToken);
 
@@ -961,7 +957,7 @@ public class TokenEndpointDocs extends AbstractTokenMockMvcTests {
             true
         );
 
-        createUser();
+
 
         getUserOAuthAccessToken(
             getMockMvc(),

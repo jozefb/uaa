@@ -278,9 +278,7 @@ public class DeprecatedUaaTokenServicesTests {
         when(userDatabase.getUserInfo(userId)).thenReturn(userInfo);
 
         String refreshToken = getOAuth2AccessToken().getRefreshToken().getValue();
-        uaaTokenServices.refreshAccessToken(refreshToken, getRefreshTokenRequest(new HashMap<String, String>() {{
-            put(RESPONSE_TYPE, "id_token");
-        }}));
+        uaaTokenServices.refreshAccessToken(refreshToken, getRefreshTokenRequest());
 
         verify(idTokenCreator).create(eq(TokenTestSupport.CLIENT_ID), eq(userId), userAuthenticationDataArgumentCaptor.capture());
         UserAuthenticationData userData = userAuthenticationDataArgumentCaptor.getValue();
@@ -329,11 +327,8 @@ public class DeprecatedUaaTokenServicesTests {
     }
 
     @Test
-    public void is_opaque_token_required() {
-        tokenSupport.defaultClient.setAutoApproveScopes(singleton("true"));
+    public void isOpaqueTokenRequired() {
         AuthorizationRequest authorizationRequest = new AuthorizationRequest(CLIENT_ID, tokenSupport.requestedAuthScopes);
-        authorizationRequest.setResponseTypes(new HashSet(Arrays.asList(CompositeToken.ID_TOKEN, "token")));
-        authorizationRequest.setResourceIds(new HashSet<>(tokenSupport.resourceIds));
         Map<String, String> azParameters = new HashMap<>(authorizationRequest.getRequestParameters());
         azParameters.put(GRANT_TYPE, TokenConstants.GRANT_TYPE_USER_TOKEN);
         authorizationRequest.setRequestParameters(azParameters);
@@ -1682,10 +1677,9 @@ public class DeprecatedUaaTokenServicesTests {
     }
 
     @Test
-    public void testLoad_Opaque_AuthenticationForAUser() {
+    public void load_Opaque_AuthenticationForAUser() {
         tokenSupport.defaultClient.setAutoApproveScopes(singleton("true"));
         AuthorizationRequest authorizationRequest = new AuthorizationRequest(CLIENT_ID, tokenSupport.requestedAuthScopes);
-        authorizationRequest.setResponseTypes(new HashSet(Arrays.asList(CompositeToken.ID_TOKEN, "token")));
         authorizationRequest.setResourceIds(new HashSet<>(tokenSupport.resourceIds));
         Map<String, String> azParameters = new HashMap<>(authorizationRequest.getRequestParameters());
         azParameters.put(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE);
@@ -1695,7 +1689,6 @@ public class DeprecatedUaaTokenServicesTests {
 
         OAuth2Authentication authentication = new OAuth2Authentication(authorizationRequest.createOAuth2Request(), userAuthentication);
         OAuth2AccessToken accessToken = tokenServices.createAccessToken(authentication);
-        assertNotNull(accessToken);
         assertTrue("Token should be composite token", accessToken instanceof CompositeToken);
         CompositeToken composite = (CompositeToken) accessToken;
         assertThat("id_token should be JWT, thus longer than 36 characters", composite.getIdTokenValue().length(), greaterThan(36));
@@ -1704,12 +1697,11 @@ public class DeprecatedUaaTokenServicesTests {
 
         String accessTokenValue = tokenProvisioning.retrieve(composite.getValue(), IdentityZoneHolder.get().getId()).getValue();
         Map<String, Object> accessTokenClaims = tokenSupport.tokenValidationService.validateToken(accessTokenValue, true).getClaims();
-        assertEquals(true, accessTokenClaims.get(ClaimConstants.REVOCABLE));
+        assertTrue((Boolean) accessTokenClaims.get(ClaimConstants.REVOCABLE));
 
         String refreshTokenValue = tokenProvisioning.retrieve(composite.getRefreshToken().getValue(), IdentityZoneHolder.get().getId()).getValue();
         Map<String, Object> refreshTokenClaims = tokenSupport.tokenValidationService.validateToken(refreshTokenValue, false).getClaims();
-        assertEquals(true, refreshTokenClaims.get(ClaimConstants.REVOCABLE));
-
+        assertTrue((Boolean) refreshTokenClaims.get(ClaimConstants.REVOCABLE));
 
         OAuth2Authentication loadedAuthentication = tokenServices.loadAuthentication(accessToken.getValue());
 
@@ -1724,17 +1716,19 @@ public class DeprecatedUaaTokenServicesTests {
         assertEquals(uaaPrincipal, userAuth.getPrincipal());
         assertTrue(userAuth.isAuthenticated());
 
-        Map<String, String> params = new HashedMap();
+        Map<String, String> params = new HashMap<>();
         params.put("grant_type", "refresh_token");
         params.put("client_id", CLIENT_ID);
+        params.put("token_format", OPAQUE.getStringValue());
         OAuth2AccessToken newAccessToken = tokenServices.refreshAccessToken(composite.getRefreshToken().getValue(), new TokenRequest(params, CLIENT_ID, Collections.EMPTY_SET, "refresh_token"));
+        assertThat("Opaque access token must be shorter than 37 characters", newAccessToken.getValue().length(), lessThanOrEqualTo(36));
+        assertThat("Opaque refresh token must be shorter than 37 characters", newAccessToken.getRefreshToken().getValue().length(), lessThanOrEqualTo(36));
     }
 
     @Test
     public void loadAuthentication_when_given_an_opaque_refreshToken_should_throw_exception() {
         tokenSupport.defaultClient.setAutoApproveScopes(singleton("true"));
         AuthorizationRequest authorizationRequest = new AuthorizationRequest(CLIENT_ID, tokenSupport.requestedAuthScopes);
-        authorizationRequest.setResponseTypes(new HashSet(Arrays.asList("token")));
         authorizationRequest.setResourceIds(new HashSet<>(tokenSupport.resourceIds));
         Map<String, String> azParameters = new HashMap<>(authorizationRequest.getRequestParameters());
         azParameters.put(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE);
@@ -1760,7 +1754,6 @@ public class DeprecatedUaaTokenServicesTests {
         IdentityZoneHolder.get().getConfig().getTokenPolicy().setJwtRevocable(true);
         tokenSupport.defaultClient.setAutoApproveScopes(singleton("true"));
         AuthorizationRequest authorizationRequest = new AuthorizationRequest(CLIENT_ID, tokenSupport.requestedAuthScopes);
-        authorizationRequest.setResponseTypes(new HashSet(Arrays.asList("token")));
         authorizationRequest.setResourceIds(new HashSet<>(tokenSupport.resourceIds));
         Map<String, String> azParameters = new HashMap<>(authorizationRequest.getRequestParameters());
         azParameters.put(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE);

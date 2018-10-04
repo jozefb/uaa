@@ -40,11 +40,13 @@ import org.cloudfoundry.identity.uaa.util.TimeServiceImpl;
 import org.cloudfoundry.identity.uaa.util.UaaTokenUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.MultitenancyFixture;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
@@ -70,10 +72,12 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.util.Collections.emptyList;
 import static org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants.ISS;
@@ -84,6 +88,7 @@ import static org.cloudfoundry.identity.uaa.util.UaaMapUtils.map;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -95,8 +100,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 public class XOAuthAuthenticationManagerIT {
-    @Rule
-    public ExpectedException exception = ExpectedException.none();
+    public static final String UAA_ORIGIN = "uaa";
 
     private MockRestServiceServer mockUaaServer;
     private XOAuthAuthenticationManager xoAuthAuthenticationManager;
@@ -136,14 +140,14 @@ public class XOAuthAuthenticationManagerIT {
             "-----END RSA PRIVATE KEY-----";
 
 
-    @After
+    @AfterEach
     public void clearContext() {
         SecurityContextHolder.clearContext();
         IdentityZoneHolder.clear();
     }
 
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         RestTemplateConfig restTemplateConfig = new RestTemplateConfig();
         RestTemplate nonTrustingRestTemplate = restTemplateConfig.nonTrustingRestTemplate();
@@ -176,7 +180,7 @@ public class XOAuthAuthenticationManagerIT {
         xoAuthProviderConfigurator = spy(
                 new XOAuthProviderConfigurator(
                         provisioning,
-                        new ExpiringUrlCache(10000, new TimeServiceImpl(), 10),
+                        new ExpiringUrlCache(Duration.ofSeconds(10), new TimeServiceImpl(), 10),
                         trustingRestTemplate,
                         nonTrustingRestTemplate
                 )
@@ -190,7 +194,7 @@ public class XOAuthAuthenticationManagerIT {
         claims = map(
                 entry("sub", "12345"),
                 entry("preferred_username", "marissa"),
-                entry("origin", "uaa"),
+                entry("origin", UAA_ORIGIN),
                 entry("iss", "http://localhost/oauth/token"),
                 entry("given_name", "Marissa"),
                 entry("client_id", "client"),
@@ -257,15 +261,15 @@ public class XOAuthAuthenticationManagerIT {
 
     @Test
     public void unknown_config_class() {
-        exception.expect(IllegalArgumentException.class);
-        exception.expectMessage("Unknown type for provider.");
-
-        xoAuthAuthenticationManager.getResponseType(new AbstractXOAuthIdentityProviderDefinition() {
-            @Override
-            public URL getAuthUrl() {
-                return super.getAuthUrl();
-            }
-        });
+        assertThrows(IllegalArgumentException.class, () -> {
+                    xoAuthAuthenticationManager.getResponseType(new AbstractXOAuthIdentityProviderDefinition() {
+                        @Override
+                        public URL getAuthUrl() {
+                            return super.getAuthUrl();
+                        }
+                    });
+                },
+                "Unknown type for provider.");
     }
 
     @Test
@@ -343,31 +347,34 @@ public class XOAuthAuthenticationManagerIT {
 
     @Test
     public void when_a_null_id_token_is_provided_resolveOriginProvider_should_throw_a_jwt_validation_exception() {
-        exception.expect(InsufficientAuthenticationException.class);
-        exception.expectMessage("Unable to decode expected id_token");
-        xoAuthAuthenticationManager.resolveOriginProvider(null);
+        assertThrows(InsufficientAuthenticationException.class,
+                () -> xoAuthAuthenticationManager.resolveOriginProvider(null),
+                "Unable to decode expected id_token");
     }
 
     @Test
     public void unable_to_resolve_to_single_provider() {
         CompositeToken token = getCompositeAccessToken();
         xCodeToken = new XOAuthCodeToken(null, null, null, token.getIdTokenValue(), null, null);
-        exception.expect(InsufficientAuthenticationException.class);
-        exception.expectMessage(String.format("Unable to map issuer, %s , to a single registered provider", claims.get(ISS)));
         String zoneId = IdentityZoneHolder.get().getId();
         when(provisioning.retrieveAll(eq(true), eq(zoneId))).thenReturn(emptyList());
-        xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken);
+
+        assertThrows(InsufficientAuthenticationException.class,
+                () -> xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken),
+                String.format("Unable to map issuer, %s , to a single registered provider", claims.get(ISS))
+        );
     }
 
     @Test
     public void issuer_missing_in_id_token() {
         getProvider();
-        exception.expect(InsufficientAuthenticationException.class);
-        exception.expectMessage("Issuer is missing in id_token");
         CompositeToken token = getCompositeAccessToken(Collections.singletonList(ISS));
         xCodeToken = new XOAuthCodeToken(null, null, null, token.getIdTokenValue(), null, null);
 
-        xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken);
+        assertThrows(InsufficientAuthenticationException.class,
+                () -> xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken),
+                String.format("Issuer is missing in id_token")
+        );
     }
 
     @Test
@@ -385,17 +392,64 @@ public class XOAuthAuthenticationManagerIT {
         assertEquals(token.getIdTokenValue(), idTokenCaptor.getValue());
     }
 
-    @Test(expected = InsufficientAuthenticationException.class)
+    @Test
     public void when_unable_to_find_an_idp_that_matches_the_id_token_issuer() {
+
         String issuerURL = "http://issuer.url";
-        when(tokenEndpointBuilder.getTokenEndpoint()).thenReturn(issuerURL);
+        when(tokenEndpointBuilder.getTokenEndpoint()).thenReturn("http://another-issuer.url");
         claims.put("iss", issuerURL);
         CompositeToken token = getCompositeAccessToken();
 
-        xoAuthAuthenticationManager.resolveOriginProvider(token.getIdTokenValue());
+        assertThrows(InsufficientAuthenticationException.class, () -> xoAuthAuthenticationManager.resolveOriginProvider(token.getIdTokenValue()));
     }
 
-    @Test(expected = InsufficientAuthenticationException.class)
+    @Test
+    public void when_exchanging_an_id_token_retrieved_from_the_internal_uaa_idp_for_an_access_token_then_auth_data_should_contain_oidc_sub_claim() {
+        when(tokenEndpointBuilder.getIssuer()).thenReturn("http://localhost/oauth/token");
+        when(tokenEndpointBuilder.getTokenEndpoint()).thenReturn("http://localhost/oauth/token");
+
+        when(provisioning.retrieveAll(eq(true), anyString())).thenReturn(new ArrayList<>());
+
+        String username = RandomStringUtils.random(50);
+        claims.put("sub", username);
+        claims.put("iss", "http://localhost/oauth/token");
+        claims.put("origin", UAA_ORIGIN);
+
+        CompositeToken token = getCompositeAccessToken();
+        String idToken = token.getIdTokenValue();
+        xCodeToken.setIdToken(idToken);
+        xCodeToken.setOrigin(null);
+
+        XOAuthAuthenticationManager.AuthenticationData externalAuthenticationDetails = xoAuthAuthenticationManager
+                .getExternalAuthenticationDetails(xCodeToken);
+
+        assertThat(username, is(externalAuthenticationDetails.getUsername()));
+        assertThat(externalAuthenticationDetails.getClaims().get(ClaimConstants.ORIGIN), is(UAA_ORIGIN));
+        assertThat(xoAuthAuthenticationManager.getOrigin(), is(UAA_ORIGIN));
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidOrigins")
+    public void when_exchanging_an_id_token_issuedby_the_uaa_idp_but_not_uaa_origin(String origin) {
+        when(tokenEndpointBuilder.getIssuer()).thenReturn("http://localhost/oauth/token");
+        when(tokenEndpointBuilder.getTokenEndpoint()).thenReturn("http://localhost/oauth/token");
+
+        when(provisioning.retrieveAll(eq(true), anyString())).thenReturn(new ArrayList<>());
+
+        String username = RandomStringUtils.random(50);
+        claims.put("sub", username);
+        claims.put("iss", "http://localhost/oauth/token");
+        claims.put("origin", origin);
+
+        CompositeToken token = getCompositeAccessToken();
+        String idToken = token.getIdTokenValue();
+        xCodeToken.setIdToken(idToken);
+        xCodeToken.setOrigin(null);
+
+        assertThrows(InsufficientAuthenticationException.class, () -> xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken));
+    }
+
+    @Test
     public void when_exchanging_an_id_token_retrieved_by_uaa_via_an_oidc_idp_for_an_access_token() {
         IdentityProvider<AbstractXOAuthIdentityProviderDefinition> idpProvider = getProvider();
         when(provisioning.retrieveAll(eq(true), anyString())).thenReturn(Collections.singletonList(idpProvider));
@@ -409,8 +463,7 @@ public class XOAuthAuthenticationManagerIT {
         xCodeToken.setOrigin(null);
 
 
-        xoAuthAuthenticationManager
-                .getExternalAuthenticationDetails(xCodeToken);
+        assertThrows(InsufficientAuthenticationException.class, () -> xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken));
     }
 
     @Test
@@ -591,50 +644,53 @@ public class XOAuthAuthenticationManagerIT {
         xoAuthAuthenticationManager.authenticate(xCodeToken);
     }
 
-    @Test(expected = AccountNotPreCreatedException.class)
+    @Test
     public void doesNotCreateShadowUserAndFailsAuthentication_IfAddShadowUserOnLoginIsFalse() {
         config.setAddShadowUserOnLogin(false);
         mockToken();
-        xoAuthAuthenticationManager.authenticate(xCodeToken);
+
+        assertThrows(AccountNotPreCreatedException.class, () -> xoAuthAuthenticationManager.authenticate(xCodeToken));
+
     }
 
-    @Test(expected = InvalidTokenException.class)
+    @Test
     public void rejectTokenWithInvalidSignature() {
         mockToken();
 
         config.setTokenKey("WRONG_KEY");
 
-        xoAuthAuthenticationManager.authenticate(xCodeToken);
+        assertThrows(InvalidTokenException.class, () -> xoAuthAuthenticationManager.authenticate(xCodeToken));
     }
 
-    @Test(expected = InvalidTokenException.class)
+    @Test
     public void rejectTokenWithInvalidSignatureAccordingToTokenKeyEndpoint() throws Exception {
         configureTokenKeyResponse("http://localhost/token_key", invalidRsaSigningKey, "wrongKey");
-        xoAuthAuthenticationManager.authenticate(xCodeToken);
+
+        assertThrows(InvalidTokenException.class, () -> xoAuthAuthenticationManager.authenticate(xCodeToken));
     }
 
-    @Test(expected = InvalidTokenException.class)
+    @Test
     public void rejectTokenWithInvalidIssuer() {
         claims.put("iss", "http://wrong.issuer/");
         mockToken();
 
-        xoAuthAuthenticationManager.authenticate(xCodeToken);
+        assertThrows(InvalidTokenException.class, () -> xoAuthAuthenticationManager.authenticate(xCodeToken));
     }
 
-    @Test(expected = InvalidTokenException.class)
+    @Test
     public void rejectExpiredToken() {
         claims.put("exp", Instant.now().getEpochSecond() - 1);
         mockToken();
 
-        xoAuthAuthenticationManager.authenticate(xCodeToken);
+        assertThrows(InvalidTokenException.class, () -> xoAuthAuthenticationManager.authenticate(xCodeToken));
     }
 
-    @Test(expected = InvalidTokenException.class)
+    @Test
     public void rejectWrongAudience() {
         claims.put("aud", Arrays.asList("another_client", "a_complete_stranger"));
         mockToken();
 
-        xoAuthAuthenticationManager.authenticate(xCodeToken);
+        assertThrows(InvalidTokenException.class, () -> xoAuthAuthenticationManager.authenticate(xCodeToken));
     }
 
     @Test
@@ -762,12 +818,14 @@ public class XOAuthAuthenticationManagerIT {
 
     @Test
     public void missing_user_name_throws_auth_exception() {
-        exception.expect(InsufficientAuthenticationException.class);
-        exception.expectMessage("Unable to map claim to a username");
         claims.remove("preferred_username");
         claims.remove("sub");
         mockToken();
-        xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken);
+
+        assertThrows(InsufficientAuthenticationException.class,
+                () -> xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken),
+                String.format("Unable to map claim to a username")
+        );
     }
 
     @Test
@@ -795,11 +853,17 @@ public class XOAuthAuthenticationManagerIT {
         assertNotNull(xoAuthAuthenticationManager.getUser(xCodeToken, xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken)));
     }
 
-    @Test(expected = InvalidTokenException.class)
+    @Test
     public void testGetUserIssuerOverrideUsedNoMatch() {
         config.setIssuer(ISSUER);
         mockToken();
-        xoAuthAuthenticationManager.getUser(xCodeToken, xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken));
+
+        assertThrows(InvalidTokenException.class,
+                () -> xoAuthAuthenticationManager.getUser(
+                        xCodeToken,
+                        xoAuthAuthenticationManager.getExternalAuthenticationDetails(xCodeToken)
+                )
+        );
     }
 
     @Test
@@ -845,24 +909,26 @@ public class XOAuthAuthenticationManagerIT {
         assertNull(authentication);
     }
 
-    @Test(expected = HttpServerErrorException.class)
+    @Test
     public void tokenCannotBeFetchedFromCodeBecauseOfServerError() {
         IdentityProvider<AbstractXOAuthIdentityProviderDefinition> identityProvider = getProvider();
 
         when(provisioning.retrieveByOrigin(eq(ORIGIN), anyString())).thenReturn(identityProvider);
 
         mockUaaServer.expect(requestTo("http://localhost/oauth/token")).andRespond(withServerError());
-        xoAuthAuthenticationManager.authenticate(xCodeToken);
+
+        assertThrows(HttpServerErrorException.class, () -> xoAuthAuthenticationManager.authenticate(xCodeToken));
     }
 
-    @Test(expected = HttpClientErrorException.class)
+    @Test
     public void tokenCannotBeFetchedFromInvalidCode() {
         IdentityProvider<AbstractXOAuthIdentityProviderDefinition> identityProvider = getProvider();
 
         when(provisioning.retrieveByOrigin(eq(ORIGIN), anyString())).thenReturn(identityProvider);
 
         mockUaaServer.expect(requestTo("http://localhost/oauth/token")).andRespond(withBadRequest());
-        xoAuthAuthenticationManager.authenticate(xCodeToken);
+
+        assertThrows(HttpClientErrorException.class, () -> xoAuthAuthenticationManager.authenticate(xCodeToken));
     }
 
     @Test
@@ -1107,5 +1173,7 @@ public class XOAuthAuthenticationManagerIT {
             assertThat(authorities, hasItem(scope));
         }
     }
-
+    private static Stream<String> invalidOrigins() {
+        return Stream.of("", "not_uaa_origin", null);
+    }
 }

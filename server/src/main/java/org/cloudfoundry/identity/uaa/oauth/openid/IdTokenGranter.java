@@ -22,7 +22,6 @@ public class IdTokenGranter {
     private static final Logger logger = LoggerFactory.getLogger(IdTokenGranter.class);
 
     private final String REQUIRED_OPENID_SCOPE = "openid";
-    private final String REQUIRED_RESPONSE_TYPE = "id_token";
     private final List<String> GRANT_TYPES_THAT_MAY_GET_ID_TOKENS = Lists.newArrayList(
             GRANT_TYPE_AUTHORIZATION_CODE,
             GRANT_TYPE_PASSWORD,
@@ -38,15 +37,8 @@ public class IdTokenGranter {
     public boolean shouldSendIdToken(String userId,
                                      BaseClientDetails clientDetails,
                                      Set<String> requestedScopes,
-                                     String requestedGrantType,
-                                     Set<String> requestedResponseTypes
+                                     String requestedGrantType
     ) {
-
-        if (requestedResponseTypes == null) {
-            logger.debug("Request did not have any response types specified");
-            return false;
-        }
-
         if (!GRANT_TYPES_THAT_MAY_GET_ID_TOKENS.contains(requestedGrantType)) {
             return false;
         }
@@ -71,29 +63,12 @@ public class IdTokenGranter {
             return false;
         }
 
-        if (GRANT_TYPE_AUTHORIZATION_CODE.equals(requestedGrantType) &&
-                requestedResponseTypes.contains("code") &&
-                requestedScopes != null &&
-                requestedScopes.contains(REQUIRED_OPENID_SCOPE)) {
-            return true;
-        }
-
         // If the requester specified the scope parameter in their /oauth/token request,
         // this list must contain openid.
         if (requestedScopes != null &&
             !requestedScopes.isEmpty() &&
             !requestedScopes.contains(REQUIRED_OPENID_SCOPE)) {
             logger.info("an ID token was requested but 'openid' is missing from the requested scopes");
-            return false;
-        }
-
-        // Other than the authorization_code code flow special case, an id token may
-        // not be issued unless id_token appears in the response types specified with
-        // the response_type param.
-        if (requestedResponseTypes
-                .stream()
-                .noneMatch(REQUIRED_RESPONSE_TYPE::equals)) {
-            logger.info("an ID token cannot be returned since the user didn't specify 'id_token' as the response_type");
             return false;
         }
 
