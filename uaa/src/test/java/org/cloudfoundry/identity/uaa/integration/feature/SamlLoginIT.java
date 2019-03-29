@@ -266,7 +266,7 @@ public class SamlLoginIT {
     }
 
     @Test
-    public void failureResponseFromSamlIDP_showErrorFromSaml() throws Exception {
+    public void incorrectResponseFromSamlIDP_showErrorFromSaml() throws Exception {
         String zoneId = "testzone3";
         String zoneUrl = baseUrl.replace("localhost",zoneId+".localhost");
 
@@ -755,13 +755,12 @@ public class SamlLoginIT {
 
         List<String> idps = Arrays.asList(provider.getOriginKey());
         String clientId = UUID.randomUUID().toString();
-        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "openid", GRANT_TYPE_AUTHORIZATION_CODE, "uaa.none", baseUrl);
+        String zoneUrl = baseUrl.replace("localhost", "testzone1.localhost");
+        BaseClientDetails clientDetails = new BaseClientDetails(clientId, null, "openid", GRANT_TYPE_AUTHORIZATION_CODE, "uaa.none", zoneUrl);
         clientDetails.setClientSecret("secret");
         clientDetails.addAdditionalInformation(ClientConstants.ALLOWED_PROVIDERS, idps);
         clientDetails.setAutoApproveScopes(Collections.singleton("true"));
         clientDetails = IntegrationTestUtils.createClientAsZoneAdmin(zoneAdminToken, baseUrl, zoneId, clientDetails);
-
-        String zoneUrl = baseUrl.replace("localhost", "testzone1.localhost");
 
         webDriver.get(zoneUrl + "/logout.do");
 
@@ -1046,7 +1045,7 @@ public class SamlLoginIT {
 
         String idpOrigin = zone.getSubdomain() + ".cloudfoundry-saml-login";
 
-        String uaaZoneId = IdentityZone.getUaa().getId();
+        String uaaZoneId = IdentityZone.getUaaZoneId();
         SamlIdentityProviderDefinition def = new SamlIdentityProviderDefinition()
             .setZoneId(uaaZoneId)
             .setMetaDataLocation(idpMetadata)
@@ -1436,10 +1435,6 @@ public class SamlLoginIT {
         return createSimplePHPSamlIDP(alias, "testzone1");
     }
 
-    public SamlIdentityProviderDefinition createTestZone3IDP(String alias) {
-        return createSimplePHPSamlIDP(alias, "testzone3");
-    }
-
     public SamlIdentityProviderDefinition createTestZoneIDP(String alias, String zoneSubdomain) {
         return createSimplePHPSamlIDP(alias, zoneSubdomain);
     }
@@ -1485,22 +1480,6 @@ public class SamlLoginIT {
         def.setShowSamlLink(true);
         def.setIdpEntityAlias(alias);
         def.setLinkText("Login with Simple SAML PHP("+alias+")");
-        return def;
-    }
-
-    public SamlIdentityProviderDefinition getTestURLDefinition() {
-        SamlIdentityProviderDefinition def = new SamlIdentityProviderDefinition();
-        def.setZoneId("uaa");
-        def.setMetaDataLocation("https://branding.login.oms.identity.team/saml/metadata?random="+new RandomValueStringGenerator().generate());
-        //def.setMetaDataLocation("https://login.run.pivotal.io/saml/metadata");
-        def.setNameID("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress");
-        def.setAssertionConsumerIndex(0);
-        def.setMetadataTrustCheck(false);
-        def.setShowSamlLink(true);
-        //def.setSocketFactoryClassName(DEFAULT_HTTPS_SOCKET_FACTORY);
-        String urlAlias = "Test URL Create - "+new RandomValueStringGenerator().generate();
-        def.setIdpEntityAlias(urlAlias);
-        def.setLinkText("Login with Simple SAML PHP("+ urlAlias +")");
         return def;
     }
 
